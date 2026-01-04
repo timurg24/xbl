@@ -1,10 +1,11 @@
-# xbl
-Extendable Binary Language is a binary data-interchange format designed to be similar to XML. The code in this repo is a lightweight reader for XBL in C++.
+# myxbl
+myxbl is a reader/writer for XBL in C++. XBL is a lightweight binary data-interchange format designed to resemble XML.
 
 # Documentation
 To see the documentation, including how XBL works, please see the repo wiki.
 
 # Example
+Reading:
 ```cpp
 #include <iostream>
 #include "xbl.h"
