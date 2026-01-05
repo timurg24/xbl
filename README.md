@@ -14,9 +14,9 @@ int main() {
   xbl::Document doc;
   xbl::Parser parser;
   doc = parser.parse(xbl::readBinary("test.bin"));
-  xbl::Element& rootEl = doc["root"]["child"];
-  auto& v = rootEl.attribute("name").value.data;
-  std::cout << std::get<std::string>(v) << "\n";
+  xbl::Element& rootElement = doc["root"]["child"];
+  std::string name = rootElement.attribute("name").getValue<std::string>();
+  std::cout << name << "\n";
 }
 ```
 
