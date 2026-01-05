@@ -22,3 +22,6 @@ int main() {
 
 # License
 This library is licensed under the MIT license.
+
+# Upcoming Features
+- Document serialization into binary file
