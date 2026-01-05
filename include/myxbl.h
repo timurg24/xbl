@@ -8,12 +8,16 @@
 #include <stdexcept>
 #include <fstream>
 #include <iterator>
+#include <type_traits>
+#include <cstring>
 
 #define ERROR(msg)  throw std::runtime_error(msg);
 
 
 #define ElementStart    0x0A
 #define ElementEnd      0x0B
+
+
 
 namespace xbl {
 
@@ -28,6 +32,8 @@ namespace xbl {
         //int16_t offsetMinutes;
     };
 
+    using ValueVariant = std::variant<std::string,int32_t,uint32_t,int64_t,uint64_t,float,double,uint8_t,DateTime>;
+
     enum class ValueType : uint8_t {
         String      = 0x00,
         Int32       = 0x01,
@@ -37,12 +43,12 @@ namespace xbl {
         Float32     = 0x05,
         Float64     = 0x06,
         UInt8        = 0x07,
-        //DateTime    = 0x08
+        DateTime    = 0x08
     };
 
     struct Value {
         ValueType type;
-        std::variant<std::string,int32_t,uint32_t,int64_t,uint64_t,float,double,uint8_t,DateTime> data;
+        ValueVariant data;
     };
 
     struct Attribute {
@@ -50,7 +56,7 @@ namespace xbl {
         Value       value;
 
         template <typename T>
-        T getValue();
+        T getValue() const;
     };
 
     struct Element {
@@ -75,10 +81,25 @@ namespace xbl {
     struct Parser {
         uint8_t nextByte(size_t& i, const std::vector<uint8_t>& data);
         std::string parseStandardString(size_t& i, const std::vector<uint8_t>& data);
+        DateTime parseDateTime(const std::string& stringDateTime);
         xbl::Attribute parseStandardAttribute(const std::string& name, uint8_t typeByte, std::string value);
         Document parse(const std::vector<uint8_t>& data);
+
+        std::vector<uint8_t> readBinary(const std::string& path);
     };
 
-    std::vector<uint8_t> readBinary(const std::string& path);
+    struct Serializer {
 
-}
+        template <typename T>
+        void writeByte(std::vector<uint8_t>& out, ValueVariant v);
+
+        void writeBinary(const std::string& path, const std::vector<uint8_t>& data);
+        std::vector<uint8_t> serializeAttributeValue(const Attribute& at);
+        std::vector<uint8_t> serializeAttribute(const Attribute& at);
+        std::vector<uint8_t> serializeElement(const Element& el);
+        std::vector<uint8_t> serialize(const Document& doc);
+    };
+
+    
+
+} // namespace xbl
