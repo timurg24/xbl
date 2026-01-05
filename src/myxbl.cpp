@@ -11,7 +11,7 @@
  * @throws None
 */
 template <typename T>
-T xbl::Attribute::getValue() {
+T xbl::Attribute::getValue() const {
     return std::get<T>(value.data); 
 }
 
@@ -320,4 +320,206 @@ std::vector<uint8_t> xbl::Parser::readBinary(const std::string& path) {
         std::istreambuf_iterator<char>(file),
         std::istreambuf_iterator<char>()
     );
+}
+
+//==========
+// SERIALIZER
+//==========
+
+
+/*
+    Steps
+    Write length of attribute
+    Write data type of attribute
+    Write attribute data
+
+*/
+
+/**
+ * Writes vector of bytes into binary file
+ * 
+ * @param path Path to the output binary file
+ * @param data Vector of bytes
+ * @return None
+ * @throws std::runtime_error If file cannot be opened or written to
+ */
+void xbl::Serializer::writeBinary(const std::string& path, const std::vector<uint8_t>& data) {
+    std::ofstream file(path, std::ios::binary | std::ios::out | std::ios::trunc);
+    if(!file) ERROR("File cannot be opened/written: " + path);
+    file.write(reinterpret_cast<const char*>(data.data()), data.size());
+}
+
+
+/**
+ * Turns the attribute object value into bytes
+ * @param at Attribute Object
+ * @returns Vector of bytes
+ * @throws runtime_error If a string is longer than 255
+ * @throws runtime_error If the value type is invalid
+ */
+std::vector<uint8_t> xbl::Serializer::serializeAttributeValue(const Attribute& at) {
+    std::vector<uint8_t> result;
+    result.push_back(static_cast<uint8_t>(at.value.type));
+
+    switch (at.value.type) {
+        case xbl::ValueType::String: {
+            std::string s = at.getValue<std::string>();
+            if(s.size() > 255) ERROR(std::string("String too long with size: ") + std::to_string(s.size()));
+            result.push_back(static_cast<uint8_t>(s.size()));
+            result.insert(result.end(),
+                reinterpret_cast<const uint8_t*>(s.data()),
+                reinterpret_cast<const uint8_t*>(s.data() + s.size())
+            );
+            break;
+        }
+
+        case xbl::ValueType::Int32: {
+            int32_t u = at.getValue<int32_t>();
+            uint32_t x = static_cast<uint32_t>(u);
+            result.push_back(static_cast<uint8_t>(sizeof(int32_t)));
+            for (int i = 0; i < sizeof(int32_t); ++i) { 
+                result.push_back(static_cast<uint8_t>((x >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::UInt32: {
+            uint32_t x = at.getValue<uint32_t>();
+            result.push_back(static_cast<uint8_t>(sizeof(uint32_t)));
+            for (int i = 0; i < sizeof(uint32_t); ++i) { 
+                result.push_back(static_cast<uint8_t>((x >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::Int64: {
+            int64_t u = at.getValue<int64_t>();
+            uint64_t x = static_cast<uint64_t>(u);
+            result.push_back(static_cast<uint8_t>(sizeof(int64_t)));
+            for (size_t i = 0; i < sizeof(int64_t); ++i) {
+                result.push_back(static_cast<uint8_t>((x >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::UInt64: {
+            uint64_t x = at.getValue<uint64_t>();
+            result.push_back(static_cast<uint8_t>(sizeof(uint64_t)));
+            for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+                result.push_back(static_cast<uint8_t>((x >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::Float32: {
+            float x = at.getValue<float>();
+            result.push_back(static_cast<uint8_t>(sizeof(float)));
+            static_assert(sizeof(float) == 4);
+
+            uint32_t u;
+            std::memcpy(&u, &x, 4); // reinterpret bits safely
+
+            for (size_t i = 0; i <  sizeof(uint32_t); ++i) {
+                result.push_back(static_cast<uint8_t>((u >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::Float64: {
+            double x = at.getValue<double>();
+            result.push_back(static_cast<uint8_t>(sizeof(double)));
+            static_assert(sizeof(double) == 8);
+
+            uint64_t u;
+            std::memcpy(&u, &x, 8); // reinterpret bits safely
+
+            for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+                result.push_back(static_cast<uint8_t>((u >> (8 * i)) & 0xFF));
+            }
+            break;
+        }
+
+        case xbl::ValueType::UInt8: {
+            uint8_t x = std::get<uint8_t>(at.value.data);
+            result.push_back(sizeof(uint8_t));
+            result.push_back(x); // 1 byte
+            break;
+        }
+
+        default:
+            ERROR("Uknown Value Type");
+    }
+
+    return result;
+}
+
+/**
+ * Serializes a (full) Attribute Object into vector of bytes
+ * @param at Attribute
+ * @returns Vector of bytes
+ * @throws None
+ */
+std::vector<uint8_t> xbl::Serializer::serializeAttribute(const Attribute& at) {
+    std::vector<uint8_t> result;
+    result.push_back(at.name.size());                           // Length of name
+    result.insert(                                              // Name
+        result.end(), 
+        reinterpret_cast<const uint8_t*>(at.name.data()),
+        reinterpret_cast<const uint8_t*>(at.name.data()) + at.name.size()
+    );
+    std::vector<uint8_t> value = serializeAttributeValue(at);
+    result.insert(result.end(), value.begin(), value.end());    // Value
+    return result;
+}
+
+/**
+ * Serializes Element object
+ * @param el Element
+ * @returns Vector of bytes
+ * @throws None
+ */
+std::vector<uint8_t> xbl::Serializer::serializeElement(const Element& el) {
+    std::vector<uint8_t> result;
+    result.push_back(ElementStart);                         // ElementStart
+    if(el.name.size() > 255) ERROR(std::string("Element name too long with size: ") + std::to_string(el.name.size()));
+    result.push_back(static_cast<uint8_t>(el.name.size())); // Size of name
+    result.insert(                                          // Name
+        result.end(), 
+        reinterpret_cast<const uint8_t*>(el.name.data()),
+        reinterpret_cast<const uint8_t*>(el.name.data()) + el.name.size()
+    );
+    size_t attributeCount = el.attributes.size();
+    if(attributeCount > 255) ERROR(std::string("Too many attributes with attribute count of: ") + std::to_string(attributeCount));
+    result.push_back(static_cast<uint8_t>(attributeCount)); // Attribute Count
+    // Loop through the attributes
+    for(size_t attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
+        std::vector<uint8_t> attribute = serializeAttribute(el.attributes[attributeIndex]);
+        result.insert(result.end(), attribute.begin(), attribute.end());
+    }
+    // Loop through child objects
+    for(const auto& child : el.children) {
+        const Element& ref = *child;
+        auto childElement = serializeElement(ref);
+        result.insert(result.end(), childElement.begin(), childElement.end());
+    }
+
+    result.push_back(ElementEnd);
+
+    return result;
+}
+
+/**
+ * Serializes document object into bytes
+ * @param doc Document
+ * @returns Vector of bytes
+ * @throws None
+ */
+std::vector<uint8_t> xbl::Serializer::serialize(const Document& doc) {
+    std::vector<uint8_t> result;
+    for(const auto& root : doc.elements) {
+        const Element& ref = *root;
+        auto rootElementSerialized = serializeElement(ref);
+        result.insert(result.end(), rootElementSerialized.begin(), rootElementSerialized.end());
+    }
+    return result;
 }
